@@ -1,0 +1,14 @@
+{
+  "name": "release-anchor-js-example",
+  "version": "1.0.0",
+  "description": "Example using @release-anchor/js SDK",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "start": "node src/index.js",
+    "evaluate": "node src/index.js"
+  },
+  "dependencies": {
+    "@release-anchor/js": "file:../.."
+  }
+}

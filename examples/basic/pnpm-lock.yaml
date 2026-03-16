@@ -1,0 +1,22 @@
+lockfileVersion: '9.0'
+
+settings:
+  autoInstallPeers: true
+  excludeLinksFromLockfile: false
+
+importers:
+
+  .:
+    dependencies:
+      '@release-anchor/js':
+        specifier: file:../..
+        version: file:../..
+
+packages:
+
+  '@release-anchor/js@file:../..':
+    resolution: {directory: ../.., type: directory}
+
+snapshots:
+
+  '@release-anchor/js@file:../..': {}

@@ -1,0 +1,39 @@
+{
+  "name": "@release-anchor/js",
+  "version": "2.0.0",
+  "description": "ReleaseAnchor JavaScript SDK for feature flag evaluation",
+  "main": "./dist/index.js",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "CHANGELOG.md"
+  ],
+  "scripts": {
+    "build": "tsup src/index.ts --format cjs,esm --dts --clean",
+    "dev": "tsup src/index.ts --format cjs,esm --dts --watch"
+  },
+  "keywords": [
+    "feature-flags",
+    "release-anchor",
+    "feature-toggle"
+  ],
+  "license": "MIT",
+  "devDependencies": {
+    "@semantic-release/changelog": "^6.0.3",
+    "@semantic-release/git": "^10.0.1",
+    "@semantic-release/github": "^9.2.0",
+    "@semantic-release/npm": "^11.0.0",
+    "semantic-release": "^24.0.0",
+    "tsup": "^8.3.5",
+    "typescript": "^5"
+  }
+}
