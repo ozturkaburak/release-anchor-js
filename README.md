@@ -32,11 +32,24 @@ if (result.value) {
 
 `evaluate()` returns an `EvaluateResponse` object with `value`, optional `matchedRuleType`, and optional `error` (on technical failures). Domain outcomes (flag not found, archived, disabled, no match) are returned as normal responses; `defaultValue` is used only for technical errors (network, timeout, 5xx, etc.).
 
+Each flag can have its own default value via the optional 3rd parameter:
+
+```js
+// dark-mode: fallback to true on error
+const r1 = await client.evaluate("dark-mode", "user-123", true);
+
+// beta-signup: fallback to false on error
+const r2 = await client.evaluate("beta-signup", "user-123", false);
+```
+
 ### evaluateBulk
 
 ```js
 const results = await client.evaluateBulk("dark-mode", ["user-1", "user-2"]);
 // results: Record<string, EvaluateResponse>
+
+// With per-flag default value:
+const results = await client.evaluateBulk("dark-mode", ["user-1", "user-2"], true);
 ```
 
 ### Optional logger
