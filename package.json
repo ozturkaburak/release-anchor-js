@@ -1,6 +1,6 @@
 {
   "name": "@release-anchor/js",
-  "version": "2.0.0",
+  "version": "1.0.0",
   "description": "ReleaseAnchor JavaScript SDK for feature flag evaluation",
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",
