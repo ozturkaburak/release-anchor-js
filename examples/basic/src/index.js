@@ -47,13 +47,13 @@ async function main() {
   }
   console.log("");
 
-  // Bulk evaluation
-  console.log("2. evaluateBulk(flagKey, userIdentifiers) -> Record<string, EvaluateResponse>");
-  const bulkResult = await client.evaluateBulk(FLAG_KEY, [
-    "user-001",
-    "user-002",
-    "user-003",
-  ]);
+  // Bulk evaluation (with optional per-flag defaultValue)
+  console.log("2. evaluateBulk(flagKey, userIdentifiers, defaultValue?) -> Record<string, EvaluateResponse>");
+  const bulkResult = await client.evaluateBulk(
+    FLAG_KEY,
+    ["user-001", "user-002", "user-003"],
+    false // fallback value on technical error
+  );
   console.log("   Result:", JSON.stringify(bulkResult, null, 2));
 }
 
