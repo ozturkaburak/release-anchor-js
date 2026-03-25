@@ -36,7 +36,7 @@
   "engines": { "node": ">=18" },
   "repository": {
     "type": "git",
-    "url": "https://github.com/release-anchor/release-anchor-js.git"
+    "url": "https://github.com/ozturkaburak/release-anchor-js.git"
   },
   "devDependencies": {
     "@vitest/coverage-v8": "^2.1.0",
