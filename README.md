@@ -133,4 +133,3 @@ cd examples/basic && pnpm install
 API_KEY=your-api-key FLAG_KEY=your-flag pnpm start
 ```
 
-With local API: `BASE_URL=http://localhost:8080 API_KEY=... pnpm start`
