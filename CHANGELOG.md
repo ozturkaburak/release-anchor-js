@@ -1,3 +1,16 @@
+# [1.1.0](https://github.com/ozturkaburak/release-anchor-js/compare/v1.0.0...v1.1.0) (2026-03-25)
+
+
+### Bug Fixes
+
+* correct repository URL in package.json ([0424b23](https://github.com/ozturkaburak/release-anchor-js/commit/0424b23414a57dc8131afe94c2a949f53a2f3fe0))
+* derive SDK header version from package.json in test assertion ([6335e23](https://github.com/ozturkaburak/release-anchor-js/commit/6335e23b318cb0eea86999ed00e4cd16ab575a23))
+
+
+### Features
+
+* production-readiness hardening before first public release ([34f9160](https://github.com/ozturkaburak/release-anchor-js/commit/34f9160f030fd0688ddcc8b2c8839aac9b33f295))
+
 # 1.0.0 (2026-03-20)
 
 
