@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ReleaseAnchor, StrictHttpError, TimeoutError } from "../index";
+import pkg from "../../package.json";
 
 const TEST_BASE_URL = "https://test-api.example.com";
 
@@ -244,7 +245,7 @@ describe("ReleaseAnchor", () => {
           headers: expect.objectContaining({
             "Content-Type": "application/json",
             Authorization: "ApiKey key",
-            "x-releaseanchor-sdk": "release-anchor-js:2.0.0",
+            "x-releaseanchor-sdk": `release-anchor-js:${pkg.version}`,
           }),
         })
       );
