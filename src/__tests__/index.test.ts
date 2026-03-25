@@ -175,6 +175,30 @@ describe("ReleaseAnchor", () => {
       expect(result.value).toBe(false);
     });
 
+    it("throws when timeout is 0", () => {
+      expect(
+        () => new ReleaseAnchor({ apiKey: "key", baseUrl: TEST_BASE_URL, timeout: 0 })
+      ).toThrow("timeout must be a positive number");
+    });
+
+    it("throws when timeout is negative", () => {
+      expect(
+        () => new ReleaseAnchor({ apiKey: "key", baseUrl: TEST_BASE_URL, timeout: -1 })
+      ).toThrow("timeout must be a positive number");
+    });
+
+    it("throws when cacheTtlMs is negative", () => {
+      expect(
+        () => new ReleaseAnchor({ apiKey: "key", baseUrl: TEST_BASE_URL, cacheTtlMs: -5000 })
+      ).toThrow("cacheTtlMs must be >= 0");
+    });
+
+    it("accepts cacheTtlMs of 0 (disables cache)", () => {
+      expect(
+        () => new ReleaseAnchor({ apiKey: "key", baseUrl: TEST_BASE_URL, cacheTtlMs: 0 })
+      ).not.toThrow();
+    });
+
     it("clears timeout on successful fetch (covers finally block)", async () => {
       const clearTimeoutSpy = vi.spyOn(globalThis, "clearTimeout");
       fetchMock.mockResolvedValueOnce(
@@ -220,7 +244,7 @@ describe("ReleaseAnchor", () => {
           headers: expect.objectContaining({
             "Content-Type": "application/json",
             Authorization: "ApiKey key",
-            "x-releaseanchor-sdk": "release-anchor-js:1.0.0",
+            "x-releaseanchor-sdk": "release-anchor-js:2.0.0",
           }),
         })
       );

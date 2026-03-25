@@ -18,8 +18,8 @@
     "CHANGELOG.md"
   ],
   "scripts": {
-    "build": "tsup src/index.ts --format cjs,esm --dts --clean",
-    "dev": "tsup src/index.ts --format cjs,esm --dts --watch",
+    "build": "tsup",
+    "dev": "tsup --watch",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
@@ -32,13 +32,19 @@
     "feature-toggle"
   ],
   "license": "MIT",
+  "sideEffects": false,
+  "engines": { "node": ">=18" },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/release-anchor/release-anchor-js.git"
+  },
   "devDependencies": {
     "@vitest/coverage-v8": "^2.1.0",
     "vitest": "^2.1.0",
     "@semantic-release/changelog": "^6.0.3",
     "@semantic-release/git": "^10.0.1",
     "@semantic-release/github": "^9.2.0",
-    "@semantic-release/npm": "^11.0.0",
+    "@semantic-release/npm": "^12.0.0",
     "semantic-release": "^24.0.0",
     "tsup": "^8.3.5",
     "typescript": "^5"

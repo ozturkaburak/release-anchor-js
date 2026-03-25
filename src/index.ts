@@ -15,8 +15,8 @@
   /** Default cache TTL in milliseconds (30 seconds). Set to 0 to disable cache. */                                                                                                                                       
   const DEFAULT_CACHE_TTL_MS = 30_000;                                                                                                                                                                                    
   /** SDK identifier and version sent in x-releaseanchor-sdk header */                                                                                                                                                    
-  const SDK_VERSION = "1.0.0";                                                                                                                                                                                            
-  const SDK_HEADER = `release-anchor-js:${SDK_VERSION}`;                                                                                                                                                                  
+  declare const __SDK_VERSION__: string;
+  const SDK_HEADER = `release-anchor-js:${__SDK_VERSION__}`;                                                                                                                                                                  
                                                                                                                                                                                                                           
   const VALID_RULE_TYPES = new Set(["STATIC", "SEGMENT", "PERCENTAGE"]);                                                                                                                                                  
                                                                                                                                                                                                                           
@@ -144,6 +144,12 @@
           if (!config.apiKey?.trim()) {                                                                                                                                                                                   
               throw new Error("ReleaseAnchor: apiKey is required");                                                                                                                                                       
           }                                                                                                                                                                                                               
+          if (config.timeout !== undefined && config.timeout <= 0) {
+              throw new Error("timeout must be a positive number");
+          }
+          if (config.cacheTtlMs !== undefined && config.cacheTtlMs < 0) {
+              throw new Error("cacheTtlMs must be >= 0");
+          }
           this.apiKey = config.apiKey.trim();                                                                                                                                                                             
           this.apiVersion = config.apiVersion ?? "v1";                                                                                                                                                                    
           this.baseUrl = (config.baseUrl ?? DEFAULT_BASE_URL).replace(/\/$/, "");
