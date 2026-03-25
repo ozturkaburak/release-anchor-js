@@ -1,3 +1,10 @@
+## [1.1.1](https://github.com/ozturkaburak/release-anchor-js/compare/v1.1.0...v1.1.1) (2026-03-25)
+
+
+### Bug Fixes
+
+* add publishConfig to publish scoped package as public ([4885600](https://github.com/ozturkaburak/release-anchor-js/commit/4885600926eae8564b712e592038eb55ec8186e9))
+
 # [1.1.0](https://github.com/ozturkaburak/release-anchor-js/compare/v1.0.0...v1.1.0) (2026-03-25)
 
 
