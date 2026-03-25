@@ -1,3 +1,10 @@
+## [1.1.2](https://github.com/ozturkaburak/release-anchor-js/compare/v1.1.1...v1.1.2) (2026-03-25)
+
+
+### Bug Fixes
+
+* remove localhost example from README ([8c3eee7](https://github.com/ozturkaburak/release-anchor-js/commit/8c3eee7642cf3776964db7ec399f5ccc9621ca6e))
+
 ## [1.1.1](https://github.com/ozturkaburak/release-anchor-js/compare/v1.1.0...v1.1.1) (2026-03-25)
 
 
