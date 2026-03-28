@@ -109,27 +109,15 @@ if (result.error) {
 When `strict4xx: true`, any 4xx response (except 401 and 429) throws a `StrictHttpError` instead of returning a fallback. Useful for surfacing integration bugs in development:
 
 ```js
-import { ReleaseAnchor, StrictHttpError, TimeoutError } from "@release-anchor/js";
+import { ReleaseAnchor, StrictHttpError } from "@release-anchor/js";
 
 try {
   const result = await client.evaluate("dark-mode", "user-123");
 } catch (err) {
   if (err instanceof StrictHttpError) {
-    console.error("HTTP error:", err.status);
-  }
-  if (err instanceof TimeoutError) {
-    console.error("Request timed out");
+    console.error("Unexpected HTTP error:", err.status);
   }
 }
 ```
 
-## Example
-
-A runnable example is in [`examples/basic`](./examples/basic). The SDK must be built before installing the example:
-
-```bash
-pnpm install && pnpm build
-cd examples/basic && pnpm install
-API_KEY=your-api-key FLAG_KEY=your-flag pnpm start
-```
-
+Timeouts are never thrown — they are returned as a fallback response with `result.error.type === "TIMEOUT"`.
