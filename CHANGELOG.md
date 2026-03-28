@@ -1,3 +1,10 @@
+## [1.1.3](https://github.com/ozturkaburak/release-anchor-js/compare/v1.1.2...v1.1.3) (2026-03-28)
+
+
+### Bug Fixes
+
+* remove dev-oriented example section, fix misleading TimeoutError catch ([85cc5cd](https://github.com/ozturkaburak/release-anchor-js/commit/85cc5cdbbd4b0a3032fdf253b155b95e1b99fbdd))
+
 ## [1.1.2](https://github.com/ozturkaburak/release-anchor-js/compare/v1.1.1...v1.1.2) (2026-03-25)
 
 
