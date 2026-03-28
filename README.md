@@ -1,6 +1,20 @@
-# @release-anchor/js
+<div align="center">
+  <img src="https://raw.githubusercontent.com/ozturkaburak/release-anchor-js/main/assets/logo.svg" alt="ReleaseAnchor" width="160" />
+  <br /><br />
 
-ReleaseAnchor JavaScript SDK for feature flag evaluation. Works in Node.js and browser environments.
+  [![npm](https://img.shields.io/npm/v/@release-anchor/js?color=6C63FF&label=npm)](https://www.npmjs.com/package/@release-anchor/js)
+  [![license](https://img.shields.io/npm/l/@release-anchor/js)](https://github.com/ozturkaburak/release-anchor-js/blob/main/LICENSE)
+  [![node](https://img.shields.io/badge/node-%3E%3D18-brightgreen)](https://nodejs.org/)
+  [![TypeScript](https://img.shields.io/badge/TypeScript-ready-3178C6)](https://www.typescriptlang.org/)
+  [![bundle size](https://img.shields.io/bundlephobia/minzip/@release-anchor/js?label=minzipped)](https://bundlephobia.com/package/@release-anchor/js)
+
+  **JavaScript / Node.js SDK for [ReleaseAnchor](https://releaseanchor.com) feature flags.**<br/>
+  Works in Node.js and browser environments. Zero dependencies.
+
+  [Documentation](https://docs.releaseanchor.com/sdks/javascript) · [npm](https://www.npmjs.com/package/@release-anchor/js) · [releaseanchor.com](https://releaseanchor.com)
+</div>
+
+---
 
 ## Installation
 
@@ -23,36 +37,34 @@ const client = new ReleaseAnchor({
 
 const result = await client.evaluate("dark-mode", "user-123");
 if (result.value) {
-  // feature on
+  // feature is on for this user
 }
-// result: { value, matchedRuleType, error }
+// result: { value: boolean, matchedRuleType: string | null, error: object | null }
 ```
 
 `evaluate()` returns an `EvaluateResponse` object with:
 - `value` — the boolean result
 - `matchedRuleType` — `"STATIC" | "SEGMENT" | "PERCENTAGE" | null`
-- `error` — populated only on technical failures (network, timeout, 5xx, etc.), `null` otherwise
-
-Domain outcomes (flag not found, archived, disabled, no match) are returned as normal responses. `defaultValue` applies only to technical errors.
+- `error` — populated on technical failures (network, timeout, etc.), `null` on success
 
 ## Configuration
 
 ```js
 const client = new ReleaseAnchor({
-  apiKey: "ra_xxx",          // Required
+  apiKey: "ra_xxx",          // Required — get from the API Keys page
   apiVersion: "v1",          // "v1" | "v2". Default: "v1"
-  baseUrl: "https://...",    // Override API base URL
+  baseUrl: "https://...",    // Override API base URL. Default: https://api.releaseanchor.com
   timeout: 5000,             // Request timeout in ms. Default: 5000
-  cacheTtlMs: 30_000,        // Cache TTL in ms. Set to 0 to disable. Default: 30000
+  cacheTtlMs: 30_000,        // In-memory cache TTL in ms. Set to 0 to disable. Default: 30000
   defaultValue: false,       // Fallback value on technical errors. Default: false
-  strict4xx: false,          // Throw StrictHttpError on 4xx (except 401/429). Default: false
-  logger: (message, context) => console.warn(message, context), // Default: console.warn
+  strict4xx: false,          // Throw StrictHttpError on unexpected 4xx. Default: false
+  logger: console.warn,      // Called on technical errors. Default: console.warn
 });
 ```
 
-## evaluate
+## `evaluate(flagKey, userIdentifier, defaultValue?)`
 
-Evaluates a single flag for a user. Results are cached per `flagKey + userIdentifier` for `cacheTtlMs` milliseconds. Concurrent calls for the same key are deduplicated.
+Evaluates a single flag for a user. Results are cached per `flagKey + userIdentifier` for `cacheTtlMs` milliseconds. Concurrent calls for the same key are deduplicated — only one HTTP request is made.
 
 ```js
 const result = await client.evaluate("dark-mode", "user-123");
@@ -61,7 +73,7 @@ const result = await client.evaluate("dark-mode", "user-123");
 const result = await client.evaluate("dark-mode", "user-123", true);
 ```
 
-## evaluateBulk
+## `evaluateBulk(flagKey, userIdentifiers[], defaultValue?)`
 
 Evaluates a single flag for multiple users in one request.
 
@@ -69,11 +81,12 @@ Evaluates a single flag for multiple users in one request.
 const results = await client.evaluateBulk("dark-mode", ["user-1", "user-2"]);
 // results: Record<string, EvaluateResponse>
 
-// With per-call defaultValue:
-const results = await client.evaluateBulk("dark-mode", ["user-1", "user-2"], true);
+for (const [userId, result] of Object.entries(results)) {
+  if (result.value) console.log(`${userId}: feature on`);
+}
 ```
 
-Missing keys in the server response are filled with a fallback entry. Extra keys from the server are ignored.
+Missing keys in the server response are filled with a fallback entry. Extra keys are ignored.
 
 ## Cache management
 
@@ -85,15 +98,16 @@ client.clearCache("dark-mode", "user-123"); // Clear a specific entry
 
 ## Cleanup
 
-Call `destroy()` during app shutdown or test teardown to clear the cache cleanup interval and avoid timer leaks:
+Call `destroy()` during app shutdown or test teardown to stop the background cache cleanup timer:
 
 ```js
 client.destroy();
+// afterAll(() => client.destroy()); // in test suites
 ```
 
 ## Error handling
 
-Technical errors (network, timeout, 401, 429, 5xx, parse failure) are caught internally, logged via `logger`, and returned as a fallback response. The `error` field of the response will be populated:
+Technical errors (network, timeout, 401, 429, 5xx, parse failure) are caught internally, logged via `logger`, and returned as a fallback response — the SDK never throws by default.
 
 ```js
 const result = await client.evaluate("dark-mode", "user-123");
@@ -102,14 +116,17 @@ if (result.error) {
   //                    "RATE_LIMITED" | "HTTP_ERROR" | "PARSE_ERROR"
   // result.error.message: string
 }
+// result.value is always safe to use — it will be defaultValue on error
 ```
 
-### strict4xx mode
+### strict4xx (development helper)
 
-When `strict4xx: true`, any 4xx response (except 401 and 429) throws a `StrictHttpError` instead of returning a fallback. Useful for surfacing integration bugs in development:
+Set `strict4xx: true` to throw `StrictHttpError` on unexpected 4xx responses instead of silently falling back. Useful for catching misconfiguration early:
 
 ```js
 import { ReleaseAnchor, StrictHttpError } from "@release-anchor/js";
+
+const client = new ReleaseAnchor({ apiKey: "...", strict4xx: true });
 
 try {
   const result = await client.evaluate("dark-mode", "user-123");
@@ -120,4 +137,19 @@ try {
 }
 ```
 
-Timeouts are never thrown — they are returned as a fallback response with `result.error.type === "TIMEOUT"`.
+> Timeouts are never thrown — detect them via `result.error.type === "TIMEOUT"`.
+
+## TypeScript
+
+The SDK ships with full TypeScript types — no `@types` package needed.
+
+```ts
+import { ReleaseAnchor, type EvaluateResponse, StrictHttpError } from "@release-anchor/js";
+
+const client = new ReleaseAnchor({ apiKey: process.env.RELEASE_ANCHOR_KEY! });
+const result: EvaluateResponse = await client.evaluate("my-flag", userId);
+```
+
+## License
+
+MIT — see [LICENSE](./LICENSE)

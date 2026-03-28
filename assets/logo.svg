@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 300" width="300" height="300">
+  <rect width="300" height="300" fill="#ffffff"/>
+
+  <!-- Anchor icon: scaled to 96x96, centered horizontally, positioned in upper half -->
+  <g transform="translate(102, 60) scale(3)" stroke="oklch(0.520 0.275 285)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" fill="none">
+    <circle cx="16" cy="7" r="3"/>
+    <line x1="16" y1="10" x2="16" y2="26"/>
+    <line x1="8" y1="15" x2="24" y2="15"/>
+    <path d="M16,26 C11,27 7,24 7,20"/>
+    <path d="M16,26 C21,27 25,24 25,20"/>
+  </g>
+
+  <!-- Wordmark centered below icon -->
+  <text
+    x="150"
+    y="215"
+    text-anchor="middle"
+    font-family="Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+    font-size="36"
+    letter-spacing="-0.5"
+  >
+    <tspan font-weight="600" fill="#111827">Release</tspan><tspan font-weight="800" fill="oklch(0.520 0.275 285)">Anchor</tspan>
+  </text>
+</svg>
