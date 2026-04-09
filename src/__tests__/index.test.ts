@@ -188,18 +188,6 @@ describe("ReleaseAnchor", () => {
       ).toThrow("timeout must be a positive number");
     });
 
-    it("throws when cacheTtlMs is negative", () => {
-      expect(
-        () => new ReleaseAnchor({ apiKey: "key", baseUrl: TEST_BASE_URL, cacheTtlMs: -5000 })
-      ).toThrow("cacheTtlMs must be >= 0");
-    });
-
-    it("accepts cacheTtlMs of 0 (disables cache)", () => {
-      expect(
-        () => new ReleaseAnchor({ apiKey: "key", baseUrl: TEST_BASE_URL, cacheTtlMs: 0 })
-      ).not.toThrow();
-    });
-
     it("clears timeout on successful fetch (covers finally block)", async () => {
       const clearTimeoutSpy = vi.spyOn(globalThis, "clearTimeout");
       fetchMock.mockResolvedValueOnce(
@@ -718,185 +706,6 @@ describe("ReleaseAnchor", () => {
     });
   });
 
-  describe("cache", () => {
-    it("returns immutable clone from cache (consumer mutation does not affect cache)", async () => {
-      fetchMock.mockResolvedValueOnce(
-        createJsonResponse({ value: true, matchedRuleType: "STATIC", error: null })
-      );
-
-      const client = new ReleaseAnchor({
-        apiKey: "key",
-        baseUrl: TEST_BASE_URL,
-        cacheTtlMs: 60_000,
-      });
-
-      const r1 = await client.evaluate("flag", "user");
-      r1.value = false;
-      r1.error = { type: "X", message: "mutated" };
-
-      const r2 = await client.evaluate("flag", "user");
-      expect(r2.value).toBe(true);
-      expect(r2.error).toBeNull();
-    });
-
-    it("returns cached result on second call when cacheTtlMs > 0", async () => {
-      fetchMock.mockResolvedValueOnce(
-        createJsonResponse({ value: true, matchedRuleType: "STATIC", error: null })
-      );
-
-      const client = new ReleaseAnchor({
-        apiKey: "key",
-        baseUrl: TEST_BASE_URL,
-        cacheTtlMs: 60_000,
-      });
-
-      const r1 = await client.evaluate("flag", "user");
-      const r2 = await client.evaluate("flag", "user");
-
-      expect(r1.value).toBe(true);
-      expect(r2.value).toBe(true);
-      expect(fetchMock).toHaveBeenCalledTimes(1);
-    });
-
-    it("prevents stale write-back when clearCache called during in-flight request", async () => {
-      let resolveFetch: (value: Response) => void;
-      const fetchPromise = new Promise<Response>((r) => {
-        resolveFetch = r;
-      });
-      fetchMock
-        .mockReturnValueOnce(fetchPromise)
-        .mockResolvedValueOnce(createJsonResponse({ value: false, matchedRuleType: null, error: null }));
-
-      const client = new ReleaseAnchor({
-        apiKey: "key",
-        baseUrl: TEST_BASE_URL,
-        cacheTtlMs: 60_000,
-      });
-
-      const p1 = client.evaluate("flag", "user");
-      client.clearCache();
-      resolveFetch!(createJsonResponse({ value: true, matchedRuleType: null, error: null }));
-
-      await p1;
-      const r2 = await client.evaluate("flag", "user");
-
-      expect(r2.value).toBe(false);
-      expect(fetchMock).toHaveBeenCalledTimes(2);
-    });
-
-    it("clears all cache when clearCache() called with no args", async () => {
-      fetchMock
-        .mockResolvedValueOnce(createJsonResponse({ value: true, matchedRuleType: null, error: null }))
-        .mockResolvedValueOnce(createJsonResponse({ value: false, matchedRuleType: null, error: null }));
-
-      const client = new ReleaseAnchor({
-        apiKey: "key",
-        baseUrl: TEST_BASE_URL,
-        cacheTtlMs: 60_000,
-      });
-
-      await client.evaluate("flag", "user");
-      client.clearCache();
-      const result = await client.evaluate("flag", "user");
-
-      expect(result.value).toBe(false);
-      expect(fetchMock).toHaveBeenCalledTimes(2);
-    });
-
-    it("specific clearCache does not invalidate other in-flight requests", async () => {
-      let resolveFlagB: (value: Response) => void;
-      const fetchFlagB = new Promise<Response>((r) => {
-        resolveFlagB = r;
-      });
-      fetchMock
-        .mockResolvedValueOnce(createJsonResponse({ value: true, matchedRuleType: null, error: null }))
-        .mockReturnValueOnce(fetchFlagB)
-        .mockResolvedValueOnce(createJsonResponse({ value: false, matchedRuleType: null, error: null }));
-
-      const client = new ReleaseAnchor({
-        apiKey: "key",
-        baseUrl: TEST_BASE_URL,
-        cacheTtlMs: 60_000,
-      });
-
-      const r1 = await client.evaluate("flagA", "user");
-      const p2 = client.evaluate("flagB", "user");
-      client.clearCache("flagA");
-      resolveFlagB!(createJsonResponse({ value: true, matchedRuleType: null, error: null }));
-
-      const r2 = await p2;
-      const r3 = await client.evaluate("flagB", "user");
-
-      expect(r1.value).toBe(true);
-      expect(r2.value).toBe(true);
-      expect(r3.value).toBe(true);
-      expect(fetchMock).toHaveBeenCalledTimes(2);
-    });
-
-    it("clears cache for specific flag when clearCache(flagKey) called", async () => {
-      fetchMock
-        .mockResolvedValueOnce(createJsonResponse({ value: true, matchedRuleType: null, error: null }))
-        .mockResolvedValueOnce(createJsonResponse({ value: false, matchedRuleType: null, error: null }))
-        .mockResolvedValueOnce(createJsonResponse({ value: false, matchedRuleType: null, error: null }));
-
-      const client = new ReleaseAnchor({
-        apiKey: "key",
-        baseUrl: TEST_BASE_URL,
-        cacheTtlMs: 60_000,
-      });
-
-      await client.evaluate("flag1", "user");
-      await client.evaluate("flag2", "user");
-      client.clearCache("flag1");
-      const r1 = await client.evaluate("flag1", "user");
-      const r2 = await client.evaluate("flag2", "user");
-
-      expect(r1.value).toBe(false);
-      expect(r2.value).toBe(false);
-      expect(fetchMock).toHaveBeenCalledTimes(3);
-    });
-
-    it("clears cache for specific flag and user when clearCache(flagKey, userIdentifier) called", async () => {
-      fetchMock
-        .mockResolvedValueOnce(createJsonResponse({ value: true, matchedRuleType: null, error: null }))
-        .mockResolvedValueOnce(createJsonResponse({ value: false, matchedRuleType: null, error: null }))
-        .mockResolvedValueOnce(createJsonResponse({ value: false, matchedRuleType: null, error: null }));
-
-      const client = new ReleaseAnchor({
-        apiKey: "key",
-        baseUrl: TEST_BASE_URL,
-        cacheTtlMs: 60_000,
-      });
-
-      await client.evaluate("flag", "user1");
-      await client.evaluate("flag", "user2");
-      client.clearCache("flag", "user1");
-      const r1 = await client.evaluate("flag", "user1");
-      const r2 = await client.evaluate("flag", "user2");
-
-      expect(r1.value).toBe(false);
-      expect(r2.value).toBe(false);
-      expect(fetchMock).toHaveBeenCalledTimes(3);
-    });
-
-    it("bypasses cache when cacheTtlMs is 0", async () => {
-      fetchMock
-        .mockResolvedValueOnce(createJsonResponse({ value: true, matchedRuleType: null, error: null }))
-        .mockResolvedValueOnce(createJsonResponse({ value: false, matchedRuleType: null, error: null }));
-
-      const client = new ReleaseAnchor({
-        apiKey: "key",
-        baseUrl: TEST_BASE_URL,
-        cacheTtlMs: 0,
-      });
-
-      await client.evaluate("flag", "user");
-      await client.evaluate("flag", "user");
-
-      expect(fetchMock).toHaveBeenCalledTimes(2);
-    });
-  });
-
   describe("in-flight deduplication", () => {
     it("runs in-flight cleanup when doEvaluate rejects (e.g. logger throws)", async () => {
       fetchMock
@@ -1047,16 +856,12 @@ describe("ReleaseAnchor", () => {
   });
 
   describe("destroy", () => {
-    it("clears cache, in-flight maps, and stops cleanup interval", async () => {
+    it("clears in-flight maps on destroy", async () => {
       fetchMock
         .mockResolvedValueOnce(createJsonResponse({ value: true, matchedRuleType: null, error: null }))
         .mockResolvedValueOnce(createJsonResponse({ value: false, matchedRuleType: null, error: null }));
 
-      const client = new ReleaseAnchor({
-        apiKey: "key",
-        baseUrl: TEST_BASE_URL,
-        cacheTtlMs: 60_000,
-      });
+      const client = new ReleaseAnchor({ apiKey: "key", baseUrl: TEST_BASE_URL });
 
       await client.evaluate("flag", "user");
       client.destroy();
