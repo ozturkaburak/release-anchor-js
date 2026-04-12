@@ -1314,4 +1314,717 @@ describe("ReleaseAnchor", () => {
       expect(result.value).toBe(false);
     });
   });
+
+  // ─── T004: EvaluateResponse evaluationId field ───────────────────────────
+  describe("EvaluateResponse evaluationId field", () => {
+    let client: ReleaseAnchor;
+    afterEach(() => { client.destroy(); });
+
+    it("passes evaluationId through when present in evaluate response", async () => {
+      fetchMock.mockResolvedValueOnce(
+        createJsonResponse({ value: true, matchedRuleType: "PERCENTAGE", error: null, evaluationId: "abc-123" })
+      );
+      client = new ReleaseAnchor({ apiKey: "key", baseUrl: TEST_BASE_URL });
+      const result = await client.evaluate("flag", "user");
+      expect(result.evaluationId).toBe("abc-123");
+    });
+
+    it("evaluationId is undefined when absent from evaluate response", async () => {
+      fetchMock.mockResolvedValueOnce(
+        createJsonResponse({ value: true, matchedRuleType: null, error: null })
+      );
+      client = new ReleaseAnchor({ apiKey: "key", baseUrl: TEST_BASE_URL });
+      const result = await client.evaluate("flag", "user");
+      expect(result.evaluationId).toBeUndefined();
+    });
+
+    it("passes evaluationId through per-user in evaluateBulk response", async () => {
+      fetchMock.mockResolvedValueOnce(
+        createJsonResponse({
+          "user-1": { value: true, matchedRuleType: "STATIC", error: null, evaluationId: "eval-001" },
+          "user-2": { value: false, matchedRuleType: null, error: null },
+        })
+      );
+      client = new ReleaseAnchor({ apiKey: "key", baseUrl: TEST_BASE_URL });
+      const result = await client.evaluateBulk("flag", ["user-1", "user-2"]);
+      expect(result["user-1"].evaluationId).toBe("eval-001");
+      expect(result["user-2"].evaluationId).toBeUndefined();
+    });
+  });
+
+  // ─── T011: reportSuccess ──────────────────────────────────────────────────
+  describe("reportSuccess", () => {
+    let client: ReleaseAnchor;
+    afterEach(() => { client.destroy(); });
+
+    it("POSTs to /feedback/report with result true when evaluationId is present", async () => {
+      client = new ReleaseAnchor({ apiKey: "key", baseUrl: TEST_BASE_URL });
+      const evaluation = { value: true, matchedRuleType: null as null, error: null, evaluationId: "eval-abc" };
+      fetchMock.mockResolvedValueOnce(new Response(null, { status: 204 }));
+
+      await client.reportSuccess(evaluation);
+
+      expect(fetchMock).toHaveBeenCalledWith(
+        `${TEST_BASE_URL}/v1/feedback/report`,
+        expect.objectContaining({
+          method: "POST",
+          body: JSON.stringify({ evaluationId: "eval-abc", result: true }),
+        })
+      );
+    });
+
+    it("includes latencyMs in payload when provided", async () => {
+      client = new ReleaseAnchor({ apiKey: "key", baseUrl: TEST_BASE_URL });
+      const evaluation = { value: true, matchedRuleType: null as null, error: null, evaluationId: "eval-xyz" };
+      fetchMock.mockResolvedValueOnce(new Response(null, { status: 204 }));
+
+      await client.reportSuccess(evaluation, { latencyMs: 150 });
+
+      const body = JSON.parse((fetchMock.mock.calls[0][1] as RequestInit).body as string);
+      expect(body).toEqual({ evaluationId: "eval-xyz", result: true, latencyMs: 150 });
+    });
+
+    it("is no-op when evaluationId is absent", async () => {
+      client = new ReleaseAnchor({ apiKey: "key", baseUrl: TEST_BASE_URL });
+      const evaluation = { value: true, matchedRuleType: null as null, error: null };
+      await client.reportSuccess(evaluation);
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it("is no-op when evaluation is null", async () => {
+      client = new ReleaseAnchor({ apiKey: "key", baseUrl: TEST_BASE_URL });
+      await client.reportSuccess(null);
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it("is no-op when evaluation is undefined", async () => {
+      client = new ReleaseAnchor({ apiKey: "key", baseUrl: TEST_BASE_URL });
+      await client.reportSuccess(undefined);
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it("swallows errors silently when feedback POST fails", async () => {
+      client = new ReleaseAnchor({ apiKey: "key", baseUrl: TEST_BASE_URL });
+      const evaluation = { value: true, matchedRuleType: null as null, error: null, evaluationId: "eval-err" };
+      fetchMock.mockRejectedValueOnce(new Error("Network error"));
+      await expect(client.reportSuccess(evaluation)).resolves.toBeUndefined();
+    });
+  });
+
+  // ─── T012: reportFailure ──────────────────────────────────────────────────
+  describe("reportFailure", () => {
+    let client: ReleaseAnchor;
+    afterEach(() => { client.destroy(); });
+
+    it("POSTs to /feedback/report with result false and default errorType UNKNOWN", async () => {
+      client = new ReleaseAnchor({ apiKey: "key", baseUrl: TEST_BASE_URL });
+      const evaluation = { value: false, matchedRuleType: null as null, error: null, evaluationId: "eval-fail" };
+      fetchMock.mockResolvedValueOnce(new Response(null, { status: 204 }));
+
+      await client.reportFailure(evaluation);
+
+      expect(fetchMock).toHaveBeenCalledWith(
+        `${TEST_BASE_URL}/v1/feedback/report`,
+        expect.objectContaining({
+          body: JSON.stringify({ evaluationId: "eval-fail", result: false, errorType: "UNKNOWN" }),
+        })
+      );
+    });
+
+    it("uses custom errorType when provided", async () => {
+      client = new ReleaseAnchor({ apiKey: "key", baseUrl: TEST_BASE_URL });
+      const evaluation = { value: false, matchedRuleType: null as null, error: null, evaluationId: "eval-fail2" };
+      fetchMock.mockResolvedValueOnce(new Response(null, { status: 204 }));
+
+      await client.reportFailure(evaluation, { errorType: "EXECUTION_FAILED" });
+
+      const body = JSON.parse((fetchMock.mock.calls[0][1] as RequestInit).body as string);
+      expect(body).toEqual({ evaluationId: "eval-fail2", result: false, errorType: "EXECUTION_FAILED" });
+    });
+
+    it("includes latencyMs and errorType when both provided", async () => {
+      client = new ReleaseAnchor({ apiKey: "key", baseUrl: TEST_BASE_URL });
+      const evaluation = { value: false, matchedRuleType: null as null, error: null, evaluationId: "eval-fail3" };
+      fetchMock.mockResolvedValueOnce(new Response(null, { status: 204 }));
+
+      await client.reportFailure(evaluation, { latencyMs: 200, errorType: "EXECUTION_FAILED" });
+
+      const body = JSON.parse((fetchMock.mock.calls[0][1] as RequestInit).body as string);
+      expect(body).toEqual({ evaluationId: "eval-fail3", result: false, errorType: "EXECUTION_FAILED", latencyMs: 200 });
+    });
+
+    it("is no-op when evaluationId is absent", async () => {
+      client = new ReleaseAnchor({ apiKey: "key", baseUrl: TEST_BASE_URL });
+      const evaluation = { value: false, matchedRuleType: null as null, error: null };
+      await client.reportFailure(evaluation);
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it("is no-op when evaluation is null", async () => {
+      client = new ReleaseAnchor({ apiKey: "key", baseUrl: TEST_BASE_URL });
+      await client.reportFailure(null);
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it("is no-op when evaluation is undefined", async () => {
+      client = new ReleaseAnchor({ apiKey: "key", baseUrl: TEST_BASE_URL });
+      await client.reportFailure(undefined);
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it("swallows errors silently when feedback POST fails", async () => {
+      client = new ReleaseAnchor({ apiKey: "key", baseUrl: TEST_BASE_URL });
+      const evaluation = { value: false, matchedRuleType: null as null, error: null, evaluationId: "eval-err2" };
+      fetchMock.mockRejectedValueOnce(new Error("Network error"));
+      await expect(client.reportFailure(evaluation)).resolves.toBeUndefined();
+    });
+  });
+
+  // ─── T013: executeWithFeedback (single-user) ──────────────────────────────
+  describe("executeWithFeedback (single-user)", () => {
+    let client: ReleaseAnchor;
+    afterEach(() => { client.destroy(); });
+
+    function mockEvalResponse(evaluationId?: string) {
+      return createJsonResponse({
+        value: true, matchedRuleType: "STATIC", error: null,
+        ...(evaluationId !== undefined ? { evaluationId } : {}),
+      });
+    }
+
+    it("calls evaluate and passes the full result to the handler", async () => {
+      client = new ReleaseAnchor({ apiKey: "key", baseUrl: TEST_BASE_URL });
+      fetchMock
+        .mockResolvedValueOnce(mockEvalResponse("eval-1"))
+        .mockResolvedValueOnce(new Response(null, { status: 204 }));
+
+      const handler = vi.fn().mockResolvedValue(true);
+      await client.executeWithFeedback("flag", "user-1", handler);
+
+      expect(handler).toHaveBeenCalledWith(
+        expect.objectContaining({ value: true, evaluationId: "eval-1" })
+      );
+    });
+
+    it("reports success and returns true when handler returns true", async () => {
+      client = new ReleaseAnchor({ apiKey: "key", baseUrl: TEST_BASE_URL });
+      fetchMock
+        .mockResolvedValueOnce(mockEvalResponse("eval-success"))
+        .mockResolvedValueOnce(new Response(null, { status: 204 }));
+
+      const result = await client.executeWithFeedback("flag", "user", async () => true);
+
+      expect(result).toBe(true);
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      const feedbackBody = JSON.parse((fetchMock.mock.calls[1][1] as RequestInit).body as string);
+      expect(feedbackBody).toEqual({ evaluationId: "eval-success", result: true });
+      expect(fetchMock.mock.calls[1][0]).toBe(`${TEST_BASE_URL}/v1/feedback/report`);
+    });
+
+    it("reports failure with EXECUTION_FAILED and returns false when handler returns false", async () => {
+      client = new ReleaseAnchor({ apiKey: "key", baseUrl: TEST_BASE_URL });
+      fetchMock
+        .mockResolvedValueOnce(mockEvalResponse("eval-efail"))
+        .mockResolvedValueOnce(new Response(null, { status: 204 }));
+
+      const result = await client.executeWithFeedback("flag", "user", async () => false);
+
+      expect(result).toBe(false);
+      const feedbackBody = JSON.parse((fetchMock.mock.calls[1][1] as RequestInit).body as string);
+      expect(feedbackBody).toEqual({ evaluationId: "eval-efail", result: false, errorType: "EXECUTION_FAILED" });
+    });
+
+    it("reports failure with UNKNOWN and rethrows when handler throws", async () => {
+      client = new ReleaseAnchor({ apiKey: "key", baseUrl: TEST_BASE_URL });
+      fetchMock
+        .mockResolvedValueOnce(mockEvalResponse("eval-throw"))
+        .mockResolvedValueOnce(new Response(null, { status: 204 }));
+
+      const error = new Error("handler exploded");
+      await expect(
+        client.executeWithFeedback("flag", "user", async () => { throw error; })
+      ).rejects.toThrow("handler exploded");
+
+      const feedbackBody = JSON.parse((fetchMock.mock.calls[1][1] as RequestInit).body as string);
+      expect(feedbackBody).toEqual({ evaluationId: "eval-throw", result: false, errorType: "UNKNOWN" });
+    });
+
+    it("runs handler but does not report feedback when evaluationId is absent", async () => {
+      client = new ReleaseAnchor({ apiKey: "key", baseUrl: TEST_BASE_URL });
+      fetchMock.mockResolvedValueOnce(mockEvalResponse()); // no evaluationId
+
+      const handler = vi.fn().mockResolvedValue(true);
+      const result = await client.executeWithFeedback("flag", "user", handler);
+
+      expect(result).toBe(true);
+      expect(handler).toHaveBeenCalledTimes(1);
+      expect(fetchMock).toHaveBeenCalledTimes(1); // only the evaluate call
+    });
+
+    it("propagates evaluate error without calling handler (strict4xx case)", async () => {
+      client = new ReleaseAnchor({ apiKey: "key", baseUrl: TEST_BASE_URL, strict4xx: true });
+      fetchMock.mockResolvedValueOnce(createJsonResponse({}, 403));
+
+      const handler = vi.fn();
+      await expect(
+        client.executeWithFeedback("flag", "user", handler)
+      ).rejects.toBeInstanceOf(StrictHttpError);
+      expect(handler).not.toHaveBeenCalled();
+    });
+  });
+
+  // ─── T021 + T022: executeWithFeedback (bulk-user) ─────────────────────────
+  describe("executeWithFeedback (bulk-user)", () => {
+    let client: ReleaseAnchor;
+    afterEach(() => { client.destroy(); });
+
+    const evalWithId = (id: string) =>
+      ({ value: true, matchedRuleType: "STATIC" as const, error: null, evaluationId: id });
+    const evalNoId = () =>
+      ({ value: false, matchedRuleType: null, error: null });
+
+    it("returns empty map immediately for empty user array without calling evaluateBulk", async () => {
+      client = new ReleaseAnchor({ apiKey: "key", baseUrl: TEST_BASE_URL });
+      const result = await client.executeWithFeedback("flag", [], async () => true);
+      expect(result).toEqual({});
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it("processes all users and returns correct result map", async () => {
+      client = new ReleaseAnchor({ apiKey: "key", baseUrl: TEST_BASE_URL });
+      fetchMock
+        .mockResolvedValueOnce(createJsonResponse({ "u1": evalWithId("e1"), "u2": evalWithId("e2") }))
+        .mockResolvedValueOnce(createJsonResponse({ accepted: 2, rejected: [] }));
+
+      const result = await client.executeWithFeedback(
+        "flag", ["u1", "u2"],
+        async (userId) => userId === "u1"
+      );
+
+      expect(result).toEqual({ "u1": true, "u2": false });
+    });
+
+    it("continues processing remaining users when one handler returns false", async () => {
+      client = new ReleaseAnchor({ apiKey: "key", baseUrl: TEST_BASE_URL });
+      fetchMock
+        .mockResolvedValueOnce(createJsonResponse({
+          "u1": evalWithId("e1"), "u2": evalWithId("e2"), "u3": evalWithId("e3"),
+        }))
+        .mockResolvedValueOnce(createJsonResponse({ accepted: 3, rejected: [] }));
+
+      const callOrder: string[] = [];
+      const result = await client.executeWithFeedback(
+        "flag", ["u1", "u2", "u3"],
+        async (userId) => { callOrder.push(userId); return userId !== "u2"; }
+      );
+
+      expect(callOrder).toEqual(["u1", "u2", "u3"]);
+      expect(result).toEqual({ "u1": true, "u2": false, "u3": true });
+    });
+
+    it("continues processing remaining users when one handler throws", async () => {
+      client = new ReleaseAnchor({ apiKey: "key", baseUrl: TEST_BASE_URL });
+      fetchMock
+        .mockResolvedValueOnce(createJsonResponse({
+          "u1": evalWithId("e1"), "u2": evalWithId("e2"), "u3": evalWithId("e3"),
+        }))
+        .mockResolvedValueOnce(createJsonResponse({ accepted: 3, rejected: [] }));
+
+      const callOrder: string[] = [];
+      const result = await client.executeWithFeedback(
+        "flag", ["u1", "u2", "u3"],
+        async (userId) => {
+          callOrder.push(userId);
+          if (userId === "u2") throw new Error("u2 failed");
+          return true;
+        }
+      );
+
+      expect(callOrder).toEqual(["u1", "u2", "u3"]);
+      expect(result).toEqual({ "u1": true, "u2": false, "u3": true });
+    });
+
+    it("does not rethrow handler errors in bulk mode", async () => {
+      client = new ReleaseAnchor({ apiKey: "key", baseUrl: TEST_BASE_URL });
+      fetchMock
+        .mockResolvedValueOnce(createJsonResponse({ "u1": evalWithId("e1") }))
+        .mockResolvedValueOnce(createJsonResponse({ accepted: 1, rejected: [] }));
+
+      await expect(
+        client.executeWithFeedback("flag", ["u1"], async () => { throw new Error("boom"); })
+      ).resolves.toEqual({ "u1": false });
+    });
+
+    it("sends a single POST /feedback/bulk after all handlers complete (T022)", async () => {
+      client = new ReleaseAnchor({ apiKey: "key", baseUrl: TEST_BASE_URL });
+      fetchMock
+        .mockResolvedValueOnce(createJsonResponse({ "u1": evalWithId("e1"), "u2": evalWithId("e2") }))
+        .mockResolvedValueOnce(createJsonResponse({ accepted: 2, rejected: [] }));
+
+      await client.executeWithFeedback("flag", ["u1", "u2"], async () => true);
+
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(fetchMock.mock.calls[1][0]).toBe(`${TEST_BASE_URL}/v1/feedback/bulk`);
+      expect((fetchMock.mock.calls[1][1] as RequestInit).method).toBe("POST");
+    });
+
+    it("batch payload contains only users with evaluationId", async () => {
+      client = new ReleaseAnchor({ apiKey: "key", baseUrl: TEST_BASE_URL });
+      fetchMock
+        .mockResolvedValueOnce(createJsonResponse({
+          "u1": evalWithId("e1"),
+          "u2": evalNoId(),  // excluded from batch
+          "u3": evalWithId("e3"),
+        }))
+        .mockResolvedValueOnce(createJsonResponse({ accepted: 2, rejected: [] }));
+
+      await client.executeWithFeedback("flag", ["u1", "u2", "u3"], async () => true);
+
+      const batchBody = JSON.parse((fetchMock.mock.calls[1][1] as RequestInit).body as string);
+      expect(batchBody).toHaveLength(2);
+      expect(batchBody).toContainEqual(expect.objectContaining({ evaluationId: "e1", result: true }));
+      expect(batchBody).toContainEqual(expect.objectContaining({ evaluationId: "e3", result: true }));
+    });
+
+    it("does not call feedback bulk when no users have evaluationId", async () => {
+      client = new ReleaseAnchor({ apiKey: "key", baseUrl: TEST_BASE_URL });
+      fetchMock.mockResolvedValueOnce(createJsonResponse({ "u1": evalNoId() }));
+
+      await client.executeWithFeedback("flag", ["u1"], async () => true);
+
+      expect(fetchMock).toHaveBeenCalledTimes(1); // only evaluateBulk
+    });
+
+    it("swallows bulk feedback POST failure without affecting result map", async () => {
+      client = new ReleaseAnchor({ apiKey: "key", baseUrl: TEST_BASE_URL });
+      fetchMock
+        .mockResolvedValueOnce(createJsonResponse({ "u1": evalWithId("e1") }))
+        .mockRejectedValueOnce(new Error("Network error")); // bulk POST fails
+
+      const result = await client.executeWithFeedback("flag", ["u1"], async () => true);
+      expect(result).toEqual({ "u1": true });
+    });
+  });
+
+  // ─── T028 + T029: Manual feedback reporting ───────────────────────────────
+  describe("manual feedback reporting (standalone)", () => {
+    let client: ReleaseAnchor;
+    afterEach(() => { client.destroy(); });
+
+    it("reportSuccess can be called with result from evaluate() without executeWithFeedback", async () => {
+      client = new ReleaseAnchor({ apiKey: "key", baseUrl: TEST_BASE_URL });
+      fetchMock
+        .mockResolvedValueOnce(
+          createJsonResponse({ value: true, matchedRuleType: "STATIC", error: null, evaluationId: "manual-eval-1" })
+        )
+        .mockResolvedValueOnce(new Response(null, { status: 204 }));
+
+      const evaluation = await client.evaluate("flag", "user-manual");
+      await client.reportSuccess(evaluation);
+
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      const feedbackBody = JSON.parse((fetchMock.mock.calls[1][1] as RequestInit).body as string);
+      expect(feedbackBody).toEqual({ evaluationId: "manual-eval-1", result: true });
+    });
+
+    it("reportSuccess and reportFailure both send POSTs when called independently for same evaluationId (idempotency)", async () => {
+      client = new ReleaseAnchor({ apiKey: "key", baseUrl: TEST_BASE_URL });
+      const evaluation = { value: true, matchedRuleType: null as null, error: null, evaluationId: "dup-eval" };
+      fetchMock
+        .mockResolvedValueOnce(new Response(null, { status: 204 }))
+        .mockResolvedValueOnce(new Response(null, { status: 204 }));
+
+      await client.reportSuccess(evaluation);
+      await client.reportFailure(evaluation, { errorType: "EXECUTION_FAILED" });
+
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+  });
+    // ─── Additional coverage: feedback/report behavior, validation, bulk edge cases ─────────────
+    describe("additional feedback coverage", () => {
+        let client: ReleaseAnchor;
+
+        afterEach(() => {
+            client?.destroy?.();
+        });
+
+        describe("reportSuccess / reportFailure HTTP response handling", () => {
+            it("reportSuccess swallows non-2xx HTTP response", async () => {
+                client = new ReleaseAnchor({ apiKey: "key", baseUrl: TEST_BASE_URL });
+                const evaluation = {
+                    value: true,
+                    matchedRuleType: null as null,
+                    error: null,
+                    evaluationId: "eval-http-500",
+                };
+
+                fetchMock.mockResolvedValueOnce(createJsonResponse({}, 500));
+
+                await expect(client.reportSuccess(evaluation)).resolves.toBeUndefined();
+                expect(fetchMock).toHaveBeenCalledTimes(1);
+            });
+
+            it("reportFailure swallows non-2xx HTTP response", async () => {
+                client = new ReleaseAnchor({ apiKey: "key", baseUrl: TEST_BASE_URL });
+                const evaluation = {
+                    value: false,
+                    matchedRuleType: null as null,
+                    error: null,
+                    evaluationId: "eval-http-429",
+                };
+
+                fetchMock.mockResolvedValueOnce(createJsonResponse({}, 429));
+
+                await expect(
+                    client.reportFailure(evaluation, { errorType: "EXECUTION_FAILED" })
+                ).resolves.toBeUndefined();
+                expect(fetchMock).toHaveBeenCalledTimes(1);
+            });
+        });
+
+        describe("reportFailure defaults and payload shape", () => {
+            it("reportFailure uses UNKNOWN when errorType is undefined even if latencyMs is provided", async () => {
+                client = new ReleaseAnchor({ apiKey: "key", baseUrl: TEST_BASE_URL });
+                const evaluation = {
+                    value: false,
+                    matchedRuleType: null as null,
+                    error: null,
+                    evaluationId: "eval-latency-only",
+                };
+
+                fetchMock.mockResolvedValueOnce(new Response(null, { status: 204 }));
+
+                await client.reportFailure(evaluation, { latencyMs: 321 });
+
+                const body = JSON.parse(
+                    (fetchMock.mock.calls[0][1] as RequestInit).body as string
+                );
+
+                expect(body).toEqual({
+                    evaluationId: "eval-latency-only",
+                    result: false,
+                    errorType: "UNKNOWN",
+                    latencyMs: 321,
+                });
+            });
+
+            it("reportSuccess sends only expected fields", async () => {
+                client = new ReleaseAnchor({ apiKey: "key", baseUrl: TEST_BASE_URL });
+                const evaluation = {
+                    value: true,
+                    matchedRuleType: "STATIC" as const,
+                    error: null,
+                    evaluationId: "eval-shape-1",
+                };
+
+                fetchMock.mockResolvedValueOnce(new Response(null, { status: 204 }));
+
+                await client.reportSuccess(evaluation);
+
+                const body = JSON.parse(
+                    (fetchMock.mock.calls[0][1] as RequestInit).body as string
+                );
+
+                expect(body).toEqual({
+                    evaluationId: "eval-shape-1",
+                    result: true,
+                });
+            });
+        });
+
+        describe("executeWithFeedback (single-user) validation and latency", () => {
+            it("throws when single-user executeWithFeedback flagKey is empty", async () => {
+                client = new ReleaseAnchor({ apiKey: "key", baseUrl: TEST_BASE_URL });
+
+                await expect(
+                    client.executeWithFeedback("", "user", async () => true)
+                ).rejects.toThrow("ReleaseAnchor: flagKey is required");
+            });
+
+            it("throws when single-user executeWithFeedback userId is empty", async () => {
+                client = new ReleaseAnchor({ apiKey: "key", baseUrl: TEST_BASE_URL });
+
+                await expect(
+                    client.executeWithFeedback("flag", "", async () => true)
+                ).rejects.toThrow("ReleaseAnchor: userIdentifier is required");
+            });
+
+        });
+
+        describe("executeWithFeedback (bulk-user) additional edge cases", () => {
+            const evalWithId = (id: string) => ({
+                value: true,
+                matchedRuleType: "STATIC" as const,
+                error: null,
+                evaluationId: id,
+            });
+
+            it("returns empty map when bulk user list becomes empty after sanitize", async () => {
+                client = new ReleaseAnchor({ apiKey: "key", baseUrl: TEST_BASE_URL });
+
+                const result = await client.executeWithFeedback(
+                    "flag",
+                    ["", "   ", "  "],
+                    async () => true
+                );
+
+                expect(result).toEqual({});
+                expect(fetchMock).not.toHaveBeenCalled();
+            });
+
+            it("throws when bulk executeWithFeedback flagKey is empty", async () => {
+                client = new ReleaseAnchor({ apiKey: "key", baseUrl: TEST_BASE_URL });
+
+                await expect(
+                    client.executeWithFeedback("   ", ["u1"], async () => true)
+                ).rejects.toThrow("ReleaseAnchor: flagKey is required");
+            });
+
+            it("sanitizes bulk executeWithFeedback userIds before evaluateBulk", async () => {
+                client = new ReleaseAnchor({ apiKey: "key", baseUrl: TEST_BASE_URL });
+
+                fetchMock
+                    .mockResolvedValueOnce(
+                        createJsonResponse({
+                            u1: evalWithId("e1"),
+                            u2: evalWithId("e2"),
+                        })
+                    )
+                    .mockResolvedValueOnce(createJsonResponse({ accepted: 2, rejected: [] }));
+
+                await client.executeWithFeedback(
+                    "flag",
+                    ["  u1  ", "", "u2", "u1", "   "],
+                    async () => true
+                );
+
+                expect(fetchMock.mock.calls[0][0]).toBe(`${TEST_BASE_URL}/v1/evaluate/bulk`);
+                expect(fetchMock.mock.calls[0][1]).toEqual(
+                    expect.objectContaining({
+                        body: JSON.stringify({
+                            flagKey: "flag",
+                            userIdentifiers: ["u1", "u2"],
+                        }),
+                    })
+                );
+            });
+
+            it("batch payload marks returned false as EXECUTION_FAILED", async () => {
+                client = new ReleaseAnchor({ apiKey: "key", baseUrl: TEST_BASE_URL });
+
+                fetchMock
+                    .mockResolvedValueOnce(
+                        createJsonResponse({
+                            u1: evalWithId("e1"),
+                        })
+                    )
+                    .mockResolvedValueOnce(createJsonResponse({ accepted: 1, rejected: [] }));
+
+                await client.executeWithFeedback("flag", ["u1"], async () => false);
+
+                const body = JSON.parse(
+                    (fetchMock.mock.calls[1][1] as RequestInit).body as string
+                );
+
+                expect(body).toEqual([
+                    {
+                        evaluationId: "e1",
+                        result: false,
+                        errorType: "EXECUTION_FAILED",
+                    },
+                ]);
+            });
+
+            it("batch payload marks thrown handler error as UNKNOWN", async () => {
+                client = new ReleaseAnchor({ apiKey: "key", baseUrl: TEST_BASE_URL });
+
+                fetchMock
+                    .mockResolvedValueOnce(
+                        createJsonResponse({
+                            u1: evalWithId("e1"),
+                        })
+                    )
+                    .mockResolvedValueOnce(createJsonResponse({ accepted: 1, rejected: [] }));
+
+                await client.executeWithFeedback("flag", ["u1"], async () => {
+                    throw new Error("boom");
+                });
+
+                const body = JSON.parse(
+                    (fetchMock.mock.calls[1][1] as RequestInit).body as string
+                );
+
+                expect(body).toEqual([
+                    {
+                        evaluationId: "e1",
+                        result: false,
+                        errorType: "UNKNOWN",
+                    },
+                ]);
+            });
+
+            it("sends one batch entry per processed user with evaluationId", async () => {
+                client = new ReleaseAnchor({ apiKey: "key", baseUrl: TEST_BASE_URL });
+
+                fetchMock
+                    .mockResolvedValueOnce(
+                        createJsonResponse({
+                            u1: evalWithId("e1"),
+                            u2: evalWithId("e2"),
+                            u3: evalWithId("e3"),
+                        })
+                    )
+                    .mockResolvedValueOnce(createJsonResponse({ accepted: 3, rejected: [] }));
+
+                await client.executeWithFeedback(
+                    "flag",
+                    ["u1", "u2", "u3"],
+                    async (userId) => userId !== "u2"
+                );
+
+                const body = JSON.parse(
+                    (fetchMock.mock.calls[1][1] as RequestInit).body as string
+                );
+
+                expect(body).toHaveLength(3);
+                expect(body).toContainEqual({
+                    evaluationId: "e1",
+                    result: true,
+                });
+                expect(body).toContainEqual({
+                    evaluationId: "e2",
+                    result: false,
+                    errorType: "EXECUTION_FAILED",
+                });
+                expect(body).toContainEqual({
+                    evaluationId: "e3",
+                    result: true,
+                });
+            });
+
+            it("swallows non-2xx response from /feedback/bulk without affecting returned results", async () => {
+                client = new ReleaseAnchor({ apiKey: "key", baseUrl: TEST_BASE_URL });
+
+                fetchMock
+                    .mockResolvedValueOnce(
+                        createJsonResponse({
+                            u1: evalWithId("e1"),
+                            u2: evalWithId("e2"),
+                        })
+                    )
+                    .mockResolvedValueOnce(createJsonResponse({}, 500));
+
+                const result = await client.executeWithFeedback(
+                    "flag",
+                    ["u1", "u2"],
+                    async (userId) => userId === "u1"
+                );
+
+                expect(result).toEqual({
+                    u1: true,
+                    u2: false,
+                });
+            });
+        });
+    });
 });

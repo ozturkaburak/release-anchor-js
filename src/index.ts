@@ -42,6 +42,15 @@ export interface EvaluateResponse {
     value: boolean;
     matchedRuleType: "STATIC" | "SEGMENT" | "PERCENTAGE" | null;
     error: EvaluationError | null;
+    /** Present only when Smart Insights is enabled for the flag-environment and matchedRuleType is not null. */
+    evaluationId?: string;
+}
+
+interface FeedbackPayload {
+    evaluationId: string;
+    result: boolean;
+    errorType?: string;
+    latencyMs?: number;
 }
 
 export interface EvaluationError {
@@ -98,7 +107,7 @@ function createFallbackResponse(
     return {
         value: defaultValue,
         matchedRuleType: null,
-        error: { type: errorType, message },
+        error: {type: errorType, message},
     };
 }
 
@@ -141,6 +150,207 @@ export class ReleaseAnchor {
     }
 
     /**
+     * Reports a successful execution outcome for an evaluation.
+     * No-op if the evaluation has no evaluationId (Smart Insights not enabled).
+     * All errors are swallowed silently — feedback reporting never throws.
+     */
+    async reportSuccess(
+        evaluation: EvaluateResponse | null | undefined,
+        options?: { latencyMs?: number }
+    ): Promise<void> {
+        if (!evaluation?.evaluationId) return;
+        const payload: FeedbackPayload = {evaluationId: evaluation.evaluationId, result: true};
+        if (options?.latencyMs !== undefined) payload.latencyMs = options.latencyMs;
+        await this.dispatchSingleFeedback(payload);
+    }
+
+    /**
+     * Reports a failed execution outcome for an evaluation.
+     * No-op if the evaluation has no evaluationId (Smart Insights not enabled).
+     * All errors are swallowed silently — feedback reporting never throws.
+     */
+    async reportFailure(
+        evaluation: EvaluateResponse | null | undefined,
+        options?: { latencyMs?: number; errorType?: string }
+    ): Promise<void> {
+        if (!evaluation?.evaluationId) return;
+        const payload: FeedbackPayload = {
+            evaluationId: evaluation.evaluationId,
+            result: false,
+            errorType: options?.errorType ?? "UNKNOWN",
+        };
+        if (options?.latencyMs !== undefined) payload.latencyMs = options.latencyMs;
+        await this.dispatchSingleFeedback(payload);
+    }
+
+    /**
+     * Evaluates a flag for a single user, runs the handler, and automatically
+     * reports success or failure feedback when Smart Insights is enabled.
+     */
+    async executeWithFeedback(
+        flagKey: string,
+        userId: string,
+        handler: (evaluation: EvaluateResponse) => Promise<boolean>
+    ): Promise<boolean>;
+    /**
+     * Evaluates a flag for multiple users, runs the handler for each independently,
+     * and dispatches all feedback in a single batched request.
+     * Handler errors are caught per-user — processing continues for remaining users.
+     */
+    async executeWithFeedback(
+        flagKey: string,
+        userIds: string[],
+        handler: (userId: string, evaluation: EvaluateResponse) => Promise<boolean>
+    ): Promise<Record<string, boolean>>;
+    async executeWithFeedback(
+        flagKey: string,
+        userIdOrUserIds: string | string[],
+        handler: ((evaluation: EvaluateResponse) => Promise<boolean>) | ((userId: string, evaluation: EvaluateResponse) => Promise<boolean>)
+    ): Promise<boolean | Record<string, boolean>> {
+        if (Array.isArray(userIdOrUserIds)) {
+            return this.executeWithFeedbackBulk(
+                flagKey,
+                userIdOrUserIds,
+                handler as (userId: string, evaluation: EvaluateResponse) => Promise<boolean>
+            );
+        }
+        return this.executeWithFeedbackSingle(
+            flagKey,
+            userIdOrUserIds,
+            handler as (evaluation: EvaluateResponse) => Promise<boolean>
+        );
+    }
+
+    private async executeWithFeedbackSingle(
+        flagKey: string,
+        userId: string,
+        handler: (evaluation: EvaluateResponse) => Promise<boolean>
+    ): Promise<boolean> {
+        const evaluation = await this.evaluate(flagKey, userId);
+
+        try {
+            const result = await handler(evaluation);
+
+            if (evaluation?.evaluationId) {
+                if (result) {
+                    await this.reportSuccess(evaluation);
+                } else {
+                    await this.reportFailure(evaluation, {
+                        errorType: "EXECUTION_FAILED",
+                    });
+                }
+            }
+
+            return result;
+        } catch (err) {
+            if (evaluation?.evaluationId) {
+                await this.reportFailure(evaluation, {
+                    errorType: "UNKNOWN",
+                });
+            }
+
+            throw err;
+        }
+    }
+
+    private async executeWithFeedbackBulk(
+        flagKey: string,
+        userIds: string[],
+        handler: (userId: string, evaluation: EvaluateResponse) => Promise<boolean>
+    ): Promise<Record<string, boolean>> {
+        const sanitizedUserIds = [...new Set(userIds.map((id) => id.trim()).filter(Boolean))];
+
+        if (sanitizedUserIds.length === 0) return {};
+
+        const evaluations = await this.evaluateBulk(flagKey, sanitizedUserIds);
+
+        const results: Record<string, boolean> = {};
+        const feedbackItems: FeedbackPayload[] = [];
+
+        for (const userId of sanitizedUserIds) {
+            const evaluation = evaluations[userId];
+
+            let result: boolean;
+
+            try {
+                result = await handler(userId, evaluation);
+            } catch {
+                if (evaluation?.evaluationId) {
+                    feedbackItems.push({
+                        evaluationId: evaluation.evaluationId,
+                        result: false,
+                        errorType: "UNKNOWN",
+                    });
+                }
+
+                results[userId] = false;
+                continue;
+            }
+
+            if (evaluation?.evaluationId) {
+                const item: FeedbackPayload = {
+                    evaluationId: evaluation.evaluationId,
+                    result,
+                };
+
+                if (!result) {
+                    item.errorType = "EXECUTION_FAILED";
+                }
+
+                feedbackItems.push(item);
+            }
+
+            results[userId] = result;
+        }
+
+        if (feedbackItems.length > 0) {
+            await this.dispatchBulkFeedback(feedbackItems);
+        }
+
+        return results;
+    }
+
+    private async dispatchSingleFeedback(payload: FeedbackPayload): Promise<void> {
+        try {
+            await this.fetchWithTimeout(
+                `${this.baseUrl}/${this.apiVersion}/feedback/report`,
+                {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        Authorization: `ApiKey ${this.apiKey}`,
+                        "x-releaseanchor-sdk": SDK_HEADER,
+                    },
+                    body: JSON.stringify(payload),
+                },
+                this.timeout
+            );
+        } catch {
+            // Feedback dispatch never throws
+        }
+    }
+
+    private async dispatchBulkFeedback(items: FeedbackPayload[]): Promise<void> {
+        try {
+            await this.fetchWithTimeout(
+                `${this.baseUrl}/${this.apiVersion}/feedback/bulk`,
+                {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        Authorization: `ApiKey ${this.apiKey}`,
+                        "x-releaseanchor-sdk": SDK_HEADER,
+                    },
+                    body: JSON.stringify(items),
+                },
+                this.timeout
+            );
+        } catch {
+            // Feedback dispatch never throws
+        }
+    }
+
+    /**
      * Evaluates a single flag for a user.
      * Returns the backend EvaluateResponse unchanged on 200.
      * On technical error (network, timeout, 401, 429, 5xx, parse failure): logs and returns fallback.
@@ -165,8 +375,14 @@ export class ReleaseAnchor {
 
         const cleanup = () => this.inFlight.delete(inFlightKey);
         const promise = this.doEvaluate(fk, uid, fallbackValue).then(
-            (v) => { cleanup(); return v; },
-            (err) => { cleanup(); throw err; }
+            (v) => {
+                cleanup();
+                return v;
+            },
+            (err) => {
+                cleanup();
+                throw err;
+            }
         );
         this.inFlight.set(inFlightKey, promise);
         return promise;
@@ -187,24 +403,24 @@ export class ReleaseAnchor {
                         Authorization: `ApiKey ${this.apiKey}`,
                         "x-releaseanchor-sdk": SDK_HEADER,
                     },
-                    body: JSON.stringify({ flagKey, userIdentifier }),
+                    body: JSON.stringify({flagKey, userIdentifier}),
                 },
                 this.timeout
             );
 
             if (!res.ok) {
-                return this.handleTechnicalError(res, "evaluate", { flagKey, userIdentifier }, fallbackValue);
+                return this.handleTechnicalError(res, "evaluate", {flagKey, userIdentifier}, fallbackValue);
             }
 
             const data = await this.parseJson<unknown>(res);
             if (!isValidEvaluateResponse(data)) {
-                return this.handleParseError("evaluate", { flagKey, userIdentifier }, fallbackValue);
+                return this.handleParseError("evaluate", {flagKey, userIdentifier}, fallbackValue);
             }
 
-            return { ...data, error: data.error ? { ...data.error } : null };
+            return {...data, error: data.error ? {...data.error} : null};
         } catch (err) {
             if (err instanceof StrictHttpError) throw err;
-            return this.handleNetworkError(err, "evaluate", { flagKey, userIdentifier }, fallbackValue);
+            return this.handleNetworkError(err, "evaluate", {flagKey, userIdentifier}, fallbackValue);
         }
     }
 
@@ -234,8 +450,14 @@ export class ReleaseAnchor {
 
         const cleanup = () => this.inFlightBulk.delete(bulkKey);
         const promise = this.doEvaluateBulk(fk, uids, fallbackValue).then(
-            (v) => { cleanup(); return v; },
-            (err) => { cleanup(); throw err; }
+            (v) => {
+                cleanup();
+                return v;
+            },
+            (err) => {
+                cleanup();
+                throw err;
+            }
         );
         this.inFlightBulk.set(bulkKey, promise);
         return promise;
@@ -256,7 +478,7 @@ export class ReleaseAnchor {
                         Authorization: `ApiKey ${this.apiKey}`,
                         "x-releaseanchor-sdk": SDK_HEADER,
                     },
-                    body: JSON.stringify({ flagKey, userIdentifiers }),
+                    body: JSON.stringify({flagKey, userIdentifiers}),
                 },
                 this.timeout
             );
@@ -275,16 +497,19 @@ export class ReleaseAnchor {
             for (const uid of userIdentifiers) {
                 const entry = data[uid];
                 if (!isValidEvaluateResponse(entry)) {
-                    this.logger("[ReleaseAnchor] evaluateBulk: invalid or missing entry in response", { flagKey, userIdentifier: uid });
+                    this.logger("[ReleaseAnchor] evaluateBulk: invalid or missing entry in response", {
+                        flagKey,
+                        userIdentifier: uid
+                    });
                     result[uid] = createFallbackResponse("PARSE_ERROR", "Invalid or missing entry in bulk response", fallbackValue);
                 } else {
-                    result[uid] = { ...entry, error: entry.error ? { ...entry.error } : null };
+                    result[uid] = {...entry, error: entry.error ? {...entry.error} : null};
                 }
             }
             return result;
         } catch (err) {
             if (err instanceof StrictHttpError) throw err;
-            const fallback = this.handleNetworkError(err, "evaluateBulk", { flagKey, userIdentifiers }, fallbackValue);
+            const fallback = this.handleNetworkError(err, "evaluateBulk", {flagKey, userIdentifiers}, fallbackValue);
             return this.buildBulkFallback(
                 (fallback.error?.type ?? "NETWORK_ERROR") as TechnicalErrorType,
                 fallback.error?.message ?? "Network error",
@@ -295,9 +520,9 @@ export class ReleaseAnchor {
     }
 
     private classifyHttpError(status: number): { type: TechnicalErrorType; message: string } {
-        if (status === 401) return { type: "UNAUTHORIZED", message: "Invalid or revoked API key" };
-        if (status === 429) return { type: "RATE_LIMITED", message: "Rate limit exceeded" };
-        return { type: "HTTP_ERROR", message: `HTTP ${status}` };
+        if (status === 401) return {type: "UNAUTHORIZED", message: "Invalid or revoked API key"};
+        if (status === 429) return {type: "RATE_LIMITED", message: "Rate limit exceeded"};
+        return {type: "HTTP_ERROR", message: `HTTP ${status}`};
     }
 
     private handleTechnicalError(
@@ -311,7 +536,7 @@ export class ReleaseAnchor {
             this.logger(`[ReleaseAnchor] ${method}: HTTP ${status}`, context);
             throw new StrictHttpError(status);
         }
-        const { type, message } = this.classifyHttpError(status);
+        const {type, message} = this.classifyHttpError(status);
         if (status === 401) this.logger(`[ReleaseAnchor] ${method}: 401 Unauthorized`, context);
         else if (status === 429) this.logger(`[ReleaseAnchor] ${method}: 429 Too Many Requests`, context);
         else if (status >= 500) this.logger(`[ReleaseAnchor] ${method}: ${status} Server Error`, context);
@@ -327,11 +552,11 @@ export class ReleaseAnchor {
     ): Record<string, EvaluateResponse> {
         const status = res.status;
         if (this.strict4xx && status >= 400 && status < 500 && status !== 401 && status !== 429) {
-            this.logger(`[ReleaseAnchor] evaluateBulk: ${status}`, { flagKey, userCount: userIdentifiers.length });
+            this.logger(`[ReleaseAnchor] evaluateBulk: ${status}`, {flagKey, userCount: userIdentifiers.length});
             throw new StrictHttpError(status);
         }
-        const { type, message } = this.classifyHttpError(status);
-        this.logger(`[ReleaseAnchor] evaluateBulk: ${status}`, { flagKey, userCount: userIdentifiers.length });
+        const {type, message} = this.classifyHttpError(status);
+        this.logger(`[ReleaseAnchor] evaluateBulk: ${status}`, {flagKey, userCount: userIdentifiers.length});
         return this.buildBulkFallback(type, message, userIdentifiers, fallbackValue);
     }
 
@@ -352,7 +577,7 @@ export class ReleaseAnchor {
     ): EvaluateResponse {
         const type: TechnicalErrorType = err instanceof TimeoutError ? "TIMEOUT" : "NETWORK_ERROR";
         const message = err instanceof Error ? err.message : "Network error";
-        this.logger(`[ReleaseAnchor] ${method}: ${type}`, { ...context, error: message });
+        this.logger(`[ReleaseAnchor] ${method}: ${type}`, {...context, error: message});
         return createFallbackResponse(type, message, fallbackValue);
     }
 
@@ -385,7 +610,7 @@ export class ReleaseAnchor {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
         try {
-            const res = await fetch(url, { ...init, signal: controller.signal });
+            const res = await fetch(url, {...init, signal: controller.signal});
             clearTimeout(timeoutId);
             return res;
         } catch (err) {
