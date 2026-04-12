@@ -43,7 +43,7 @@ if (result.value) {
 
 `evaluate()` returns an `EvaluateResponse` object with:
 - `value` - the boolean result
-- `matchedRuleType` - `"STATIC" | "SEGMENT" | "PERCENTAGE" | null`
+- `matchedRuleType` - `"STATIC" | "SEGMENT" | "PERCENTAGE" | null` in canonical uppercase
 - `error` - populated on technical failures, `null` on successful API responses
 - `evaluationId` - present when Smart Insights feedback is enabled for the evaluated flag
 

@@ -17,6 +17,11 @@ declare const __SDK_VERSION__: string;
 const SDK_HEADER = `release-anchor-js:${__SDK_VERSION__}`;
 
 const VALID_RULE_TYPES = new Set(["STATIC", "SEGMENT", "PERCENTAGE"]);
+const RULE_TYPE_NORMALIZATION: Record<string, "STATIC" | "SEGMENT" | "PERCENTAGE"> = {
+    static: "STATIC",
+    segment: "SEGMENT",
+    percentage: "PERCENTAGE",
+};
 
 /** Supported API versions */
 export type ApiVersion = "v1" | "v2";
@@ -97,6 +102,18 @@ function isValidEvaluateResponse(data: unknown): data is EvaluateResponse {
         if (typeof e.type !== "string" || typeof e.message !== "string") return false;
     }
     return true;
+}
+
+function normalizeMatchedRuleType(data: unknown): unknown {
+    if (data === null || typeof data !== "object" || Array.isArray(data)) return data;
+
+    const normalized = {...(data as Record<string, unknown>)};
+    if (typeof normalized.matchedRuleType === "string") {
+        normalized.matchedRuleType =
+            RULE_TYPE_NORMALIZATION[normalized.matchedRuleType.toLowerCase()] ?? normalized.matchedRuleType;
+    }
+
+    return normalized;
 }
 
 function createFallbackResponse(
@@ -412,7 +429,7 @@ export class ReleaseAnchor {
                 return this.handleTechnicalError(res, "evaluate", {flagKey, userIdentifier}, fallbackValue);
             }
 
-            const data = await this.parseJson<unknown>(res);
+            const data = normalizeMatchedRuleType(await this.parseJson<unknown>(res));
             if (!isValidEvaluateResponse(data)) {
                 return this.handleParseError("evaluate", {flagKey, userIdentifier}, fallbackValue);
             }
@@ -495,7 +512,7 @@ export class ReleaseAnchor {
 
             const result: Record<string, EvaluateResponse> = {};
             for (const uid of userIdentifiers) {
-                const entry = data[uid];
+                const entry = normalizeMatchedRuleType(data[uid]);
                 if (!isValidEvaluateResponse(entry)) {
                     this.logger("[ReleaseAnchor] evaluateBulk: invalid or missing entry in response", {
                         flagKey,

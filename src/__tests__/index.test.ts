@@ -989,9 +989,80 @@ describe("ReleaseAnchor", () => {
         expect(result.value).toBe(true);
       }
     });
+
+    it("normalizes lowercase matchedRuleType static to STATIC", async () => {
+      fetchMock.mockResolvedValueOnce(
+        createJsonResponse({ value: true, matchedRuleType: "static", error: null })
+      );
+
+      const client = new ReleaseAnchor({
+        apiKey: "key",
+        baseUrl: TEST_BASE_URL,
+      });
+      const result = await client.evaluate("flag", "user-static");
+
+      expect(result.matchedRuleType).toBe("STATIC");
+      expect(result.error).toBeNull();
+      expect(result.value).toBe(true);
+    });
+
+    it("normalizes lowercase matchedRuleType segment to SEGMENT", async () => {
+      fetchMock.mockResolvedValueOnce(
+        createJsonResponse({ value: true, matchedRuleType: "segment", error: null })
+      );
+
+      const client = new ReleaseAnchor({
+        apiKey: "key",
+        baseUrl: TEST_BASE_URL,
+      });
+      const result = await client.evaluate("flag", "user-segment");
+
+      expect(result.matchedRuleType).toBe("SEGMENT");
+      expect(result.error).toBeNull();
+      expect(result.value).toBe(true);
+    });
+
+    it("normalizes lowercase matchedRuleType percentage to PERCENTAGE", async () => {
+      fetchMock.mockResolvedValueOnce(
+        createJsonResponse({ value: true, matchedRuleType: "percentage", error: null })
+      );
+
+      const client = new ReleaseAnchor({
+        apiKey: "key",
+        baseUrl: TEST_BASE_URL,
+      });
+      const result = await client.evaluate("flag", "user-percentage");
+
+      expect(result.matchedRuleType).toBe("PERCENTAGE");
+      expect(result.error).toBeNull();
+      expect(result.value).toBe(true);
+    });
   });
 
   describe("edge cases - evaluateBulk", () => {
+    it("normalizes lowercase matchedRuleType values in bulk entries", async () => {
+      fetchMock.mockResolvedValueOnce(
+        createJsonResponse({
+          u1: { value: true, matchedRuleType: "static", error: null },
+          u2: { value: true, matchedRuleType: "segment", error: null },
+          u3: { value: true, matchedRuleType: "percentage", error: null },
+        })
+      );
+
+      const client = new ReleaseAnchor({
+        apiKey: "key",
+        baseUrl: TEST_BASE_URL,
+      });
+      const result = await client.evaluateBulk("flag", ["u1", "u2", "u3"]);
+
+      expect(result.u1.matchedRuleType).toBe("STATIC");
+      expect(result.u2.matchedRuleType).toBe("SEGMENT");
+      expect(result.u3.matchedRuleType).toBe("PERCENTAGE");
+      expect(result.u1.error).toBeNull();
+      expect(result.u2.error).toBeNull();
+      expect(result.u3.error).toBeNull();
+    });
+
     it("fills missing bulk response keys with fallback entries", async () => {
       fetchMock.mockResolvedValueOnce(
         createJsonResponse({
