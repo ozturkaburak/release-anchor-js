@@ -358,7 +358,7 @@ export class ReleaseAnchor {
                         Authorization: `ApiKey ${this.apiKey}`,
                         "x-releaseanchor-sdk": SDK_HEADER,
                     },
-                    body: JSON.stringify(items),
+                    body: JSON.stringify({feedbacks: items}),
                 },
                 this.timeout
             );

@@ -1739,9 +1739,12 @@ describe("ReleaseAnchor", () => {
       await client.executeWithFeedback("flag", ["u1", "u2", "u3"], async () => true);
 
       const batchBody = JSON.parse((fetchMock.mock.calls[1][1] as RequestInit).body as string);
-      expect(batchBody).toHaveLength(2);
-      expect(batchBody).toContainEqual(expect.objectContaining({ evaluationId: "e1", result: true }));
-      expect(batchBody).toContainEqual(expect.objectContaining({ evaluationId: "e3", result: true }));
+      expect(batchBody).toEqual({
+        feedbacks: expect.any(Array),
+      });
+      expect(batchBody.feedbacks).toHaveLength(2);
+      expect(batchBody.feedbacks).toContainEqual(expect.objectContaining({ evaluationId: "e1", result: true }));
+      expect(batchBody.feedbacks).toContainEqual(expect.objectContaining({ evaluationId: "e3", result: true }));
     });
 
     it("does not call feedback bulk when no users have evaluationId", async () => {
@@ -1984,13 +1987,15 @@ describe("ReleaseAnchor", () => {
                     (fetchMock.mock.calls[1][1] as RequestInit).body as string
                 );
 
-                expect(body).toEqual([
-                    {
-                        evaluationId: "e1",
-                        result: false,
-                        errorType: "EXECUTION_FAILED",
-                    },
-                ]);
+                expect(body).toEqual({
+                    feedbacks: [
+                        {
+                            evaluationId: "e1",
+                            result: false,
+                            errorType: "EXECUTION_FAILED",
+                        },
+                    ],
+                });
             });
 
             it("batch payload marks thrown handler error as UNKNOWN", async () => {
@@ -2012,13 +2017,15 @@ describe("ReleaseAnchor", () => {
                     (fetchMock.mock.calls[1][1] as RequestInit).body as string
                 );
 
-                expect(body).toEqual([
-                    {
-                        evaluationId: "e1",
-                        result: false,
-                        errorType: "UNKNOWN",
-                    },
-                ]);
+                expect(body).toEqual({
+                    feedbacks: [
+                        {
+                            evaluationId: "e1",
+                            result: false,
+                            errorType: "UNKNOWN",
+                        },
+                    ],
+                });
             });
 
             it("sends one batch entry per processed user with evaluationId", async () => {
@@ -2044,17 +2051,20 @@ describe("ReleaseAnchor", () => {
                     (fetchMock.mock.calls[1][1] as RequestInit).body as string
                 );
 
-                expect(body).toHaveLength(3);
-                expect(body).toContainEqual({
+                expect(body).toEqual({
+                    feedbacks: expect.any(Array),
+                });
+                expect(body.feedbacks).toHaveLength(3);
+                expect(body.feedbacks).toContainEqual({
                     evaluationId: "e1",
                     result: true,
                 });
-                expect(body).toContainEqual({
+                expect(body.feedbacks).toContainEqual({
                     evaluationId: "e2",
                     result: false,
                     errorType: "EXECUTION_FAILED",
                 });
-                expect(body).toContainEqual({
+                expect(body.feedbacks).toContainEqual({
                     evaluationId: "e3",
                     result: true,
                 });
