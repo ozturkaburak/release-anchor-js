@@ -250,7 +250,6 @@ describe("ReleaseAnchor", () => {
       const client = new ReleaseAnchor({
         apiKey: "key",
         baseUrl: TEST_BASE_URL,
-        cacheTtlMs: 0,
       });
       const result = await client.evaluate("flag", "user");
 
@@ -658,7 +657,10 @@ describe("ReleaseAnchor", () => {
         defaultValue: false,
       });
 
-      vi.spyOn(client as Record<string, unknown>, "handleNetworkError").mockImplementationOnce(
+      vi.spyOn(
+        client as unknown as { handleNetworkError: (...args: unknown[]) => unknown },
+        "handleNetworkError"
+      ).mockImplementationOnce(
         () => ({ value: false, matchedRuleType: null, error: undefined })
       );
 
@@ -820,7 +822,6 @@ describe("ReleaseAnchor", () => {
       const client = new ReleaseAnchor({
         apiKey: "key",
         baseUrl: TEST_BASE_URL,
-        cacheTtlMs: 0,
       });
       await client.evaluate("  flag  ", "  user  ");
 
@@ -895,7 +896,6 @@ describe("ReleaseAnchor", () => {
         apiKey: "key",
         baseUrl: TEST_BASE_URL,
         defaultValue: false,
-        cacheTtlMs: 0,
       });
       const result = await client.evaluate("flag", "user");
 
@@ -912,7 +912,6 @@ describe("ReleaseAnchor", () => {
         apiKey: "key",
         baseUrl: TEST_BASE_URL,
         defaultValue: true,
-        cacheTtlMs: 0,
       });
       const result = await client.evaluate("flag", "user");
 
@@ -929,7 +928,6 @@ describe("ReleaseAnchor", () => {
         apiKey: "key",
         baseUrl: TEST_BASE_URL,
         defaultValue: false,
-        cacheTtlMs: 0,
       });
       const result = await client.evaluate("flag", "user");
 
@@ -946,7 +944,6 @@ describe("ReleaseAnchor", () => {
         apiKey: "key",
         baseUrl: TEST_BASE_URL,
         defaultValue: true,
-        cacheTtlMs: 0,
       });
       const result = await client.evaluate("flag", "user");
 
@@ -986,7 +983,6 @@ describe("ReleaseAnchor", () => {
         const client = new ReleaseAnchor({
           apiKey: "key",
           baseUrl: TEST_BASE_URL,
-          cacheTtlMs: 0,
         });
         const result = await client.evaluate("flag", `user-${ruleType}`);
         expect(result.matchedRuleType).toBe(ruleType);
@@ -1116,7 +1112,7 @@ describe("ReleaseAnchor", () => {
       expect(fetchMock).toHaveBeenCalledTimes(2);
     });
 
-    it("evaluate works after destroy, no cache write", async () => {
+    it("evaluate works after destroy without preserving stale in-flight state", async () => {
       fetchMock
         .mockResolvedValueOnce(createJsonResponse({ value: true, matchedRuleType: null, error: null }))
         .mockResolvedValueOnce(createJsonResponse({ value: false, matchedRuleType: null, error: null }));
@@ -1124,7 +1120,6 @@ describe("ReleaseAnchor", () => {
       const client = new ReleaseAnchor({
         apiKey: "key",
         baseUrl: TEST_BASE_URL,
-        cacheTtlMs: 60_000,
       });
 
       const r1 = await client.evaluate("flag", "user");
@@ -1201,19 +1196,18 @@ describe("ReleaseAnchor", () => {
   });
 
   describe("edge cases - constructor", () => {
-    it("does not set cleanup interval when cacheTtlMs is 0", () => {
+    it("does not set background cleanup intervals", () => {
       const setIntervalSpy = vi.spyOn(globalThis, "setInterval");
       const client = new ReleaseAnchor({
         apiKey: "key",
         baseUrl: TEST_BASE_URL,
-        cacheTtlMs: 0,
       });
+      expect(client).toBeInstanceOf(ReleaseAnchor);
       expect(setIntervalSpy).not.toHaveBeenCalled();
       setIntervalSpy.mockRestore();
     });
 
-    it("runs cache cleanup interval and removes expired entries", async () => {
-      vi.useFakeTimers();
+    it("does not keep dedup state after requests settle", async () => {
       fetchMock
         .mockResolvedValueOnce(createJsonResponse({ value: true, matchedRuleType: null, error: null }))
         .mockResolvedValueOnce(createJsonResponse({ value: false, matchedRuleType: null, error: null }));
@@ -1221,21 +1215,14 @@ describe("ReleaseAnchor", () => {
       const client = new ReleaseAnchor({
         apiKey: "key",
         baseUrl: TEST_BASE_URL,
-        cacheTtlMs: 100,
       });
 
       const r1 = await client.evaluate("flag", "user");
-      expect(r1.value).toBe(true);
-      expect(fetchMock).toHaveBeenCalledTimes(1);
-
-      // Advance past TTL (100ms) so entry expires, and past interval (100*2=200ms) so cleanup runs
-      await vi.advanceTimersByTimeAsync(250);
-
       const r2 = await client.evaluate("flag", "user");
+
+      expect(r1.value).toBe(true);
       expect(r2.value).toBe(false);
       expect(fetchMock).toHaveBeenCalledTimes(2);
-
-      vi.useRealTimers();
     });
   });
 

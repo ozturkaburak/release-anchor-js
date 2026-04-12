@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+// @ts-expect-error test imports the executable JS example directly for smoke coverage
 import { runExampleFlows } from "../../examples/basic/src/index.js";
 
 describe("basic example smoke coverage", () => {
@@ -74,7 +75,7 @@ describe("basic example smoke coverage", () => {
       expect.any(Function)
     );
 
-    const renderedOutput = log.mock.calls.flat().join("\n");
+    const renderedOutput = log.mock.calls.map((call) => call.join(" ")).join("\n");
     expect(renderedOutput).toContain("1. evaluate(flagKey, userIdentifier) -> EvaluateResponse");
     expect(renderedOutput).toContain("3. reportSuccess(evaluation) / reportFailure(evaluation)");
     expect(renderedOutput).toContain("feedback enabled (evaluationId=eval-123)");
@@ -114,7 +115,7 @@ describe("basic example smoke coverage", () => {
       log,
     });
 
-    const renderedOutput = log.mock.calls.flat().join("\n");
+    const renderedOutput = log.mock.calls.map((call) => call.join(" ")).join("\n");
     expect(renderedOutput).toContain("feedback skipped (evaluationId missing, call is a no-op)");
   });
 });
