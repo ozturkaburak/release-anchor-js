@@ -13,13 +13,12 @@ The script logs whether feedback calls are active for the returned evaluation or
 
 ## Prerequisites
 
-1. Release Anchor API running, for example `cd release-anchor-api && ./gradlew bootRun`
-2. API key from the dashboard
-3. A feature flag created in the dashboard
+1. API key from the dashboard
+2. A feature flag created in the dashboard
 
 ## Run
 
-This example uses the local SDK via `file:../..`. Build the SDK before installing the example so the linked package includes fresh compiled output.
+This example depends on the SDK from the repository root, not from npm. In `examples/basic/package.json`, the dependency is declared as `file:../..`, which means "use the package located two directories up from this example". Build the SDK before installing the example so that linked package includes fresh compiled output.
 
 From repo root:
 
@@ -39,17 +38,11 @@ pnpm example:basic
 cd examples/basic && API_KEY=your-api-key FLAG_KEY=your-flag pnpm start
 ```
 
-With a local API:
-
-```bash
-API_KEY=ra_xxx FLAG_KEY=beta-signup BASE_URL=http://localhost:8080 pnpm start
-```
-
 Optional environment variables:
 
 - `USER_ID` - single-user example identifier. Default: `user-001`
 - `FLAG_KEY` - flag key to evaluate. Default: `dark-mode`
-- `BASE_URL` - API base URL. Default: `http://localhost:8080`
+- `BASE_URL` - override the API base URL when you want to target a non-default environment
 
 ## What the script does
 
@@ -57,7 +50,7 @@ When you run `pnpm start`, it executes these flows in order:
 
 1. Evaluates a single user with `evaluate()`
 2. Evaluates multiple users with `evaluateBulk()`
-3. Sends manual feedback with `reportSuccess()` and `reportFailure()`
+3. Sends manual feedback with `reportSuccess()` and `reportFailure()` as the optional manual-reporting path
 4. Runs a single-user execution flow with `executeWithFeedback()`
 5. Runs a bulk-user execution flow with `executeWithFeedback()`
 

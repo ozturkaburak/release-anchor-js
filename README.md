@@ -26,6 +26,17 @@ pnpm add @release-anchor/js
 yarn add @release-anchor/js
 ```
 
+## First integration
+
+For a first SDK integration, set up the product side first:
+
+- Sign in to the [Release Anchor dashboard](https://app.releaseanchor.com/login)
+- Create a new project and its environments
+- Create an environment API key
+- Create a flag you want to evaluate
+
+> Note: If you want to use Smart Insights, enable it for the flag in the dashboard before integrating the Smart Insights methods below. See [Smart Insights docs](https://docs.releaseanchor.com/features/smart-insights).
+
 ## Quick start
 
 ```js
@@ -47,17 +58,24 @@ if (result.value) {
 - `error` - populated on technical failures, `null` on successful API responses
 - `evaluationId` - present when Smart Insights feedback is enabled for the evaluated flag
 
+## Primary API surface
+
+Most integrations only need these two methods:
+
+- `evaluate(flagKey, userIdentifier, defaultValue?)`
+- `evaluateBulk(flagKey, userIdentifiers[], defaultValue?)`
+
 ## Configuration
 
 ```js
 const client = new ReleaseAnchor({
   apiKey: "ra_xxx",          // Required - get from the API Keys page
-  apiVersion: "v1",          // "v1" | "v2". Default: "v1"
-  baseUrl: "https://...",    // Override API base URL. Default: https://api.releaseanchor.com
-  timeout: 5000,             // Request timeout in ms. Default: 5000
-  defaultValue: false,       // Fallback value on technical errors. Default: false
-  strict4xx: false,          // Throw StrictHttpError on unexpected 4xx. Default: false
-  logger: console.warn,      // Called on technical errors. Default: console.warn
+  apiVersion: "v1",          // "v1" | "v2"
+  baseUrl: "https://...",    // Override API base URL
+  timeout: 5000,             // Request timeout in ms
+  defaultValue: false,       // Fallback value on technical errors
+  strict4xx: false,          // Throw StrictHttpError on unexpected 4xx
+  logger: console.warn,      // Called on technical errors
 });
 ```
 
@@ -86,32 +104,17 @@ for (const [userId, result] of Object.entries(results)) {
 
 Missing keys in the server response are filled with a fallback entry. Extra keys are ignored.
 
-## `reportSuccess(evaluation, options?)`
+## Smart Insights
 
-Reports a successful execution outcome for a previous evaluation. If `evaluation.evaluationId` is missing, the call becomes a no-op.
+Use the Smart Insights helpers when you want the SDK to evaluate a flag and also report execution outcomes.
+Smart Insights lets Release Anchor connect evaluation events with real execution outcomes such as success, failure, and latency. Use it when you want feedback data in the dashboard instead of evaluation-only visibility.
+This is useful when you want to understand not just who matched a flag, but whether the experience actually worked after the flag was served.
 
-```js
-const evaluation = await client.evaluate("checkout-redesign", "user-123");
+### `executeWithFeedback(flagKey, userId, handler)`
 
-await client.reportSuccess(evaluation, {
-  latencyMs: 125,
-});
-```
-
-## `reportFailure(evaluation, options?)`
-
-Reports a failed execution outcome for a previous evaluation. If `evaluation.evaluationId` is missing, the call becomes a no-op.
-
-```js
-const evaluation = await client.evaluate("checkout-redesign", "user-123");
-
-await client.reportFailure(evaluation, {
-  errorType: "EXECUTION_FAILED",
-  latencyMs: 125,
-});
-```
-
-## `executeWithFeedback(flagKey, userId, handler)`
+- Calls `evaluate(...)` first
+- Runs your handler with the evaluation result
+- Calls `reportSuccess(...)` or `reportFailure(...)` automatically when `evaluationId` is present
 
 Single-user helper that evaluates the flag, runs your handler, and automatically reports success or failure when `evaluationId` is present.
 
@@ -131,7 +134,11 @@ Handler semantics:
 - return `false` -> reports failure with `EXECUTION_FAILED`
 - throw -> reports failure with `UNKNOWN` and rethrows the original error
 
-## `executeWithFeedback(flagKey, userIds[], handler)`
+### `executeWithFeedback(flagKey, userIds[], handler)`
+
+- Calls `evaluateBulk(...)` first
+- Runs the handler independently for each user
+- Sends a single bulk feedback request after processing users with `evaluationId`
 
 Bulk helper that evaluates all users, runs the handler for each user independently, and sends a single batched feedback request at the end.
 
@@ -148,9 +155,38 @@ const results = await client.executeWithFeedback(
 
 In bulk mode, handler errors do not stop the rest of the users from being processed. The returned value is `Record<string, boolean>`.
 
+### Manual reporting
+
+Use these only when you want to report execution results manually instead of relying on `executeWithFeedback(...)`.
+
+### `reportSuccess(evaluation, options?)`
+
+Reports a successful execution outcome for a previous evaluation. If `evaluation.evaluationId` is missing, the call becomes a no-op.
+
+```js
+const evaluation = await client.evaluate("checkout-redesign", "user-123");
+
+await client.reportSuccess(evaluation, {
+  latencyMs: 125,
+});
+```
+
+### `reportFailure(evaluation, options?)`
+
+Reports a failed execution outcome for a previous evaluation. If `evaluation.evaluationId` is missing, the call becomes a no-op.
+
+```js
+const evaluation = await client.evaluate("checkout-redesign", "user-123");
+
+await client.reportFailure(evaluation, {
+  errorType: "EXECUTION_FAILED",
+  latencyMs: 125,
+});
+```
+
 ## Cleanup
 
-Call `destroy()` during app shutdown or test teardown to clear in-flight request deduplication state:
+Call `destroy()` during test teardown or application shutdown if you want to clear in-flight request deduplication state explicitly:
 
 ```js
 client.destroy();
