@@ -245,4 +245,4 @@ const result: EvaluateResponse = await client.evaluate("my-flag", userId);
 
 ## License
 
-MIT - see [LICENSE](./LICENSE)
+MIT - see [LICENSE](./LICENSE) 
