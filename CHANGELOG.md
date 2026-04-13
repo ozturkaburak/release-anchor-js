@@ -1,4 +1,4 @@
-# 1.0.0 (2026-04-09)
+# 2.0.0 (2026-04-09)
 
 
 * feat!: add caching, request deduplication, strict4xx mode, and per-call defaultValue ([e2c05b2](https://github.com/ozturkaburak/release-anchor-js/commit/e2c05b2ee4ebdd79adb52abe24437c06b89507c7))
@@ -104,8 +104,6 @@ per-call defaultValue parameter.
 - Add cacheGeneration counter to prevent stale in-flight write-back
 - Add runtime shape validation via isValidEvaluateResponse
 - Export TimeoutError and StrictHttpError
-
-Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
 
 # Changelog
 
